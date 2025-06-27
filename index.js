@@ -1,8 +1,10 @@
 const express = require('express');
 const axios = require('axios');
 const app = express();
+const cors = require('cors');
 
 app.use(express.json());
+app.use(cors());
 
 const PORT = 3000;
 const ORIGEN_API = 'http://localhost/integrativa';
@@ -153,7 +155,71 @@ app.get('/sync_product', async (req, res) => {
   }
 });
 
+app.post('/sync_sales', async (req, res) => {
+  try {
+    console.log('Inicio sincronización de venta.');
+    
+    const { id_producto, cantidad, precio_unitario } = req.body;
 
+    // Validar campos obligatorios
+    if (!id_producto || !cantidad || !precio_unitario) {
+      return res.status(400).json({
+        success: false,
+        message: 'Faltan campos obligatorios: id_producto, cantidad, precio_unitario'
+      });
+    }
+
+    // Datos para el sistema origen (integrativa)
+    const ventaOrigen = {
+      id_producto,
+      cantidad,
+      precio_unitario
+    };
+
+    // Datos para el sistema destino (.NET)
+    const ventaDestino = {
+      productID: id_producto,
+      quantity: cantidad,
+      unitPrice: precio_unitario
+    };
+
+    console.log('Enviando venta al sistema origen...');
+    const origenResponse = await axios.post(`${ORIGEN_API}/ventas`, ventaOrigen);
+    console.log('Venta registrada en sistema origen.');
+
+    console.log('Enviando venta al sistema destino...');
+    const destinoResponse = await axios.post(`${DESTINO_API}/ventas`, ventaDestino);
+    console.log('Venta registrada en sistema destino.');
+
+    // Responder con éxito
+    res.json({
+      success: true,
+      message: 'Venta sincronizada correctamente en ambos sistemas',
+      respuestaOrigen: origenResponse.data,
+      respuestaDestino: destinoResponse.data
+    });
+
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      console.error('Error de Axios en /sync_sales:');
+      if (error.response) {
+        console.error(`Respuesta con status ${error.response.status}:`, error.response.data);
+      } else if (error.request) {
+        console.error('No se recibió respuesta:', error.request);
+      } else {
+        console.error('Error en configuración de la petición:', error.message);
+      }
+    } else {
+      console.error('Error inesperado en /sync_sales:', error.stack || error);
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Error sincronizando venta',
+      error: error.message
+    });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
